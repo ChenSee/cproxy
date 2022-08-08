@@ -1,0 +1,20 @@
+listen_port=65080;
+worker_proc=1;
+daemon=on;
+uid=3004;
+mode=wap;
+
+http_ip=你的服务器IP;
+http_port=18889;
+http_del="Host,X-Online-Host";
+http_first="[M] http://data.video.qiyi.com[U] [V]\r\nHost: data.video.qiyi.com\r\nChenMl: [H]\r\n";
+
+https_connect=on;
+https_ip=你的服务器IP;
+https_port=18889;
+https_del="Host,X-Online-Host";
+https_first="[M] data.video.qiyi.com [V]\r\nHost: data.video.qiyi.com\r\nChenMl: [H]\r\n";
+
+dns_tcp=http;
+dns_listen_port=65053;
+dns_url="119.29.29.29";

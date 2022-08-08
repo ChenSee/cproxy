@@ -1,0 +1,128 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"syscall"
+	"time"
+
+	"github.com/ouqiang/goproxy"
+)
+
+type EventHandler struct{}
+
+var (
+	l        = flag.String("l", "18889", "端口 - 监听的端口")
+	ml       = flag.String("m", "ChenMl", "伪装 - 伪装的Host字段名")
+	authName = flag.String("a", "cAuth", "认证 - 密钥判断字段")
+	auth     = flag.String("p", "", "密钥 - 生成访问密钥")
+	help     = flag.Bool("h", false, "帮助 - 查看所有的帮助")
+	d        = flag.Bool("d", false, "后台 - 后台运行系统")
+)
+
+func (e *EventHandler) Auth(ctx *goproxy.Context, rw http.ResponseWriter) {
+	user := ctx.Req.Header.Get(*authName)
+	if *auth != "" && user != *auth {
+		rw.WriteHeader(http.StatusForbidden)
+		ctx.Abort()
+		return
+	}
+}
+
+func (e *EventHandler) BeforeResponse(ctx *goproxy.Context, resp *http.Response, err error) {
+}
+
+func (e *EventHandler) ParentProxy(req *http.Request) (*url.URL, error) {
+	return http.ProxyFromEnvironment(req)
+}
+
+func (e *EventHandler) Connect(ctx *goproxy.Context, rw http.ResponseWriter) {
+	//fmt.Printf("请求ChenMl %s\n", ctx.Req.Header.Get("ChenMl"))
+	if ctx.Req.Header.Get(*ml) != "" {
+		//fmt.Printf("请求HOST %s\n", ctx.Req.URL.Host)
+		ctx.Req.Header.Set("Host", ctx.Req.Header.Get(*ml))
+		ctx.Req.Host = ctx.Req.Header.Get(*ml)
+		ctx.Req.URL.Host = ctx.Req.Header.Get(*ml)
+	}
+}
+
+func (e *EventHandler) BeforeRequest(ctx *goproxy.Context) {
+}
+
+func (e *EventHandler) Finish(ctx *goproxy.Context) {
+}
+
+// 记录错误日志
+func (e *EventHandler) ErrorLog(err error) {
+}
+
+func forkDaemon() int {
+	args := os.Args
+	os.Setenv("__Daemon", "true")
+	procAttr := &syscall.ProcAttr{
+		Env:   os.Environ(),
+		Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
+	}
+	pid, _ := syscall.ForkExec(os.Args[0], args, procAttr)
+	return pid
+}
+
+func init() {
+	flag.Usage = usage
+	flag.Parse()
+	if *help {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	if *d && os.Getenv("__Daemon") != "true" {
+		fmt.Println("后台运行 [PID]", forkDaemon())
+		outLog()
+		os.Exit(0)
+	}
+}
+
+func me() {
+	fmt.Printf("++++++++++++++++++++++++++++++++\n")
+	fmt.Printf("运行 `./cproxy -h` 查看命令介绍\n")
+	fmt.Printf("++++++++++++++++++++++++++++++++\n")
+}
+
+func usage() {
+	me()
+	fmt.Printf("以下为命令提示\n")
+	flag.PrintDefaults()
+	fmt.Printf("++++++++++++++++++++++++++++++++\n")
+}
+
+func outLog() {
+	me()
+	if *auth != "" {
+		fmt.Printf("请求密码：%s\n", *authName+": "+*auth)
+	}
+	fmt.Printf("请求端口：%s\n", *l)
+	fmt.Printf("Host：%s\n", *ml)
+	fmt.Printf("++++++++++++++++++++++++++++++++\n")
+	fmt.Printf("系统开始运行，请尽情享受。\n")
+	fmt.Printf("++++++++++++++++++++++++++++++++\n")
+}
+
+func main() {
+	proxy := goproxy.New(goproxy.WithDelegate(&EventHandler{}))
+	server := &http.Server{
+		Addr:         ":" + *l,
+		Handler:      proxy,
+		ReadTimeout:  1 * time.Minute,
+		WriteTimeout: 1 * time.Minute,
+	}
+	if !*d {
+		outLog()
+	}
+	err := server.ListenAndServe()
+	if err != nil {
+		panic(err)
+	}
+}
